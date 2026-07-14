@@ -1,0 +1,808 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>Sitzplatz buchen</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <style>
+    :root {
+      color-scheme: dark;
+
+      --bg: #0f1117;
+      --text: #f2f4f8;
+      --hint: #9aa4b2;
+      --secondary-bg: #171a23;
+      --button: #4da3ff;
+      --button-text: #ffffff;
+      --link: #78b7ff;
+
+      --card: #171a23;
+      --card-selected: #1d2b3f;
+      --field-bg: #10131a;
+      --line: rgba(255, 255, 255, 0.14);
+      --danger: #ff6b6b;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 16px;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    h1 {
+      margin: 0 0 14px;
+      font-size: 24px;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+    }
+
+    .day-card {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      margin-bottom: 10px;
+      background: var(--card);
+      overflow: hidden;
+    }
+
+    .day-card.selected {
+      border-color: var(--button);
+      background: var(--card-selected);
+    }
+
+    .day-top {
+      display: grid;
+      grid-template-columns: 34px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 14px;
+    }
+
+    .day-check {
+      width: 22px;
+      height: 22px;
+      margin: 0;
+      accent-color: var(--button);
+    }
+
+    .day-main {
+      min-width: 0;
+      cursor: pointer;
+    }
+
+    .day-name {
+      font-size: 18px;
+      font-weight: 850;
+      line-height: 1.2;
+    }
+
+    .day-sub {
+      margin-top: 3px;
+      font-size: 13px;
+      color: var(--hint);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .change-btn {
+      appearance: none;
+      border: 1px solid rgba(77, 163, 255, 0.55);
+      background: rgba(77, 163, 255, 0.13);
+      color: var(--link);
+      border-radius: 999px;
+      padding: 8px 11px;
+      font-weight: 800;
+      font-size: 14px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .details {
+      display: none;
+      border-top: 1px solid var(--line);
+      padding: 12px 14px 14px 46px;
+    }
+
+    .day-card.open .details {
+      display: block;
+    }
+
+    .section-title {
+      margin: 2px 0 8px;
+      font-size: 12px;
+      font-weight: 850;
+      color: var(--hint);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .venue-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .venue-option {
+      position: relative;
+    }
+
+    .venue-option input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .venue-label {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--field-bg);
+      font-size: 16px;
+      font-weight: 850;
+      cursor: pointer;
+      user-select: none;
+      text-align: center;
+      padding: 0 8px;
+    }
+
+    .venue-option input:checked + .venue-label {
+      border-color: var(--button);
+      background: rgba(77, 163, 255, 0.18);
+    }
+
+    .hours-line {
+      color: var(--hint);
+      font-size: 13px;
+      margin: 0 0 12px;
+    }
+
+    .time-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    label.time-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 850;
+      color: var(--hint);
+    }
+
+    select {
+      width: 100%;
+      font-size: 16px;
+      color: var(--text);
+      background: var(--field-bg);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 11px 10px;
+      outline: none;
+    }
+
+    select:focus {
+      border-color: var(--button);
+    }
+
+    .status-line {
+      min-height: 18px;
+      margin-top: 6px;
+      font-size: 13px;
+      line-height: 1.35;
+      color: var(--hint);
+    }
+
+    .status-line.error {
+      color: var(--danger);
+      font-weight: 800;
+    }
+
+    .summary {
+      display: none;
+      white-space: pre-line;
+      margin: 16px 0;
+      padding: 13px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--secondary-bg);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .summary.visible {
+      display: block;
+    }
+
+    .summary.error {
+      border-color: rgba(255, 107, 107, 0.7);
+      background: rgba(255, 107, 107, 0.1);
+    }
+
+    .submit-btn {
+      width: 100%;
+      padding: 15px;
+      border: 0;
+      border-radius: 14px;
+      font-size: 17px;
+      font-weight: 850;
+      background: var(--button);
+      color: var(--button-text);
+      cursor: pointer;
+      margin-top: 4px;
+    }
+
+    .submit-btn:active,
+    .change-btn:active {
+      transform: scale(0.99);
+    }
+
+    @media (max-width: 390px) {
+      body {
+        padding: 12px;
+      }
+
+      .day-top {
+        grid-template-columns: 30px 1fr auto;
+        padding: 12px;
+      }
+
+      .details {
+        padding-left: 42px;
+      }
+
+      .change-btn {
+        padding: 7px 9px;
+        font-size: 13px;
+      }
+
+      .venue-label {
+        font-size: 14px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Sitzplatz buchen</h1>
+
+  <div id="form"></div>
+
+  <div class="summary" id="summary"></div>
+
+  <button class="submit-btn" onclick="submitBooking()">Buchung senden</button>
+
+  <script>
+    const tg = window.Telegram && window.Telegram.WebApp
+      ? window.Telegram.WebApp
+      : {
+          ready() {},
+          expand() {},
+          showAlert(message) { alert(message); },
+          sendData(data) {
+            console.log("Telegram WebApp.sendData:", data);
+            alert(data);
+          },
+          close() {}
+        };
+
+    tg.ready();
+    tg.expand();
+
+    const WOCHENTAGE = [
+      "Montag",
+      "Dienstag",
+      "Mittwoch",
+      "Donnerstag",
+      "Freitag",
+      "Samstag",
+      "Sonntag"
+    ];
+
+    const MONATE = [
+      "Januar",
+      "Februar",
+      "März",
+      "April",
+      "Mai",
+      "Juni",
+      "Juli",
+      "August",
+      "September",
+      "Oktober",
+      "November",
+      "Dezember"
+    ];
+
+    const ORTE = ["MI", "Stammgelände"];
+
+    const OEFFNUNGSZEITEN = {
+      "MI": {
+        "Montag": ["08:00", "24:00"],
+        "Dienstag": ["08:00", "24:00"],
+        "Mittwoch": ["08:00", "24:00"],
+        "Donnerstag": ["08:00", "24:00"],
+        "Freitag": ["08:00", "24:00"],
+        "Samstag": ["10:00", "20:00"],
+        "Sonntag": ["10:00", "20:00"]
+      },
+      "Stammgelände": {
+        "Montag": ["08:00", "24:00"],
+        "Dienstag": ["08:00", "24:00"],
+        "Mittwoch": ["08:00", "24:00"],
+        "Donnerstag": ["08:00", "24:00"],
+        "Freitag": ["08:00", "24:00"],
+        "Samstag": ["09:00", "22:00"],
+        "Sonntag": ["09:00", "22:00"]
+      }
+    };
+
+    const STANDARD_ORT = "MI";
+    const STANDARD_BEGINN = "09:00";
+    const STANDARD_ENDE = "18:00";
+
+    const SCHRITT_MINUTEN = 30;
+    const MINDEST_MINUTEN = 60;
+    const MAX_MINUTEN_PRO_TAG = 16 * 60;
+    const MAX_MINUTEN_PRO_WOCHE = 40 * 60;
+
+    const form = document.getElementById("form");
+    const summary = document.getElementById("summary");
+
+    function montagDerNaechstenWoche() {
+      const heute = new Date();
+
+      heute.setHours(12, 0, 0, 0);
+
+      const heutigerWochentag = heute.getDay();
+      const tageSeitMontag = heutigerWochentag === 0
+        ? 6
+        : heutigerWochentag - 1;
+
+      const montagDieseWoche = new Date(heute);
+      montagDieseWoche.setDate(heute.getDate() - tageSeitMontag);
+
+      const montagNaechsteWoche = new Date(montagDieseWoche);
+      montagNaechsteWoche.setDate(montagDieseWoche.getDate() + 7);
+
+      return montagNaechsteWoche;
+    }
+
+    const START_NAECHSTE_WOCHE = montagDerNaechstenWoche();
+
+    function datumFuerTag(tag) {
+      const index = WOCHENTAGE.indexOf(tag);
+      const datum = new Date(START_NAECHSTE_WOCHE);
+
+      datum.setDate(START_NAECHSTE_WOCHE.getDate() + index);
+
+      return datum;
+    }
+
+    function datumText(tag) {
+      const datum = datumFuerTag(tag);
+      return `${datum.getDate()}. ${MONATE[datum.getMonth()]}`;
+    }
+
+    function isoDatum(tag) {
+      const datum = datumFuerTag(tag);
+      const jahr = datum.getFullYear();
+      const monat = String(datum.getMonth() + 1).padStart(2, "0");
+      const tagNummer = String(datum.getDate()).padStart(2, "0");
+
+      return `${jahr}-${monat}-${tagNummer}`;
+    }
+
+    function tagMitDatum(tag) {
+      return `${tag}, ${datumText(tag)}`;
+    }
+
+    function idFuer(text) {
+      return text
+        .replaceAll(" ", "_")
+        .replaceAll(":", "_")
+        .replaceAll("ä", "ae")
+        .replaceAll("ö", "oe")
+        .replaceAll("ü", "ue")
+        .replaceAll("ß", "ss");
+    }
+
+    function minuten(zeit) {
+      const [h, m] = zeit.split(":").map(Number);
+      return h * 60 + m;
+    }
+
+    function zeit(minutenwert) {
+      if (minutenwert === 1440) {
+        return "24:00";
+      }
+
+      const h = Math.floor(minutenwert / 60);
+      const m = minutenwert % 60;
+
+      return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    }
+
+    function dauerText(minutenwert) {
+      const h = Math.floor(minutenwert / 60);
+      const m = minutenwert % 60;
+
+      if (m === 0) {
+        return `${h} Std.`;
+      }
+
+      return `${h} Std. ${m} Min.`;
+    }
+
+    function ausgewaehlterOrt(tag) {
+      const tagId = idFuer(tag);
+      const selected = document.querySelector(`input[name="${tagId}_ort"]:checked`);
+      return selected ? selected.value : STANDARD_ORT;
+    }
+
+    function oeffnungszeiten(tag, ort) {
+      return OEFFNUNGSZEITEN[ort][tag];
+    }
+
+    function zeitInBereich(wert, start, ende, istEnde) {
+      const wertMin = minuten(wert);
+      const startMin = minuten(start);
+      const endeMin = minuten(ende);
+
+      const erster = istEnde ? startMin + MINDEST_MINUTEN : startMin;
+      const letzter = istEnde ? endeMin : endeMin - SCHRITT_MINUTEN;
+
+      if (wertMin < erster) {
+        return zeit(erster);
+      }
+
+      if (wertMin > letzter) {
+        return zeit(letzter);
+      }
+
+      return wert;
+    }
+
+    function optionen(von, bis, ausgewaehlt, istEnde) {
+      const vonMin = minuten(von);
+      const bisMin = minuten(bis);
+
+      const erster = istEnde ? vonMin + MINDEST_MINUTEN : vonMin;
+      const letzter = istEnde ? bisMin : bisMin - SCHRITT_MINUTEN;
+
+      let html = "";
+
+      for (let t = erster; t <= letzter; t += SCHRITT_MINUTEN) {
+        const value = zeit(t);
+        const selected = value === ausgewaehlt ? "selected" : "";
+        html += `<option value="${value}" ${selected}>${value}</option>`;
+      }
+
+      return html;
+    }
+
+    function rebuildBeginn(tag, behalten = true) {
+      const tagId = idFuer(tag);
+      const ort = ausgewaehlterOrt(tag);
+      const [offen, geschlossen] = oeffnungszeiten(tag, ort);
+
+      const beginnSelect = document.getElementById(`${tagId}_beginn`);
+      const endeSelect = document.getElementById(`${tagId}_ende`);
+
+      let beginn = behalten ? beginnSelect.value : STANDARD_BEGINN;
+      let ende = behalten ? endeSelect.value : STANDARD_ENDE;
+
+      beginn = zeitInBereich(beginn, offen, geschlossen, false);
+      ende = zeitInBereich(ende, offen, geschlossen, true);
+
+      beginnSelect.innerHTML = optionen(offen, geschlossen, beginn, false);
+      beginnSelect.value = beginn;
+
+      rebuildEnde(tag, ende);
+
+      document.getElementById(`${tagId}_oeffnung`).textContent =
+        `Öffnungszeiten: ${offen}–${geschlossen}`;
+    }
+
+    function rebuildEnde(tag, gewuenschtesEnde = null) {
+      const tagId = idFuer(tag);
+      const ort = ausgewaehlterOrt(tag);
+      const [offen, geschlossen] = oeffnungszeiten(tag, ort);
+
+      const beginnSelect = document.getElementById(`${tagId}_beginn`);
+      const endeSelect = document.getElementById(`${tagId}_ende`);
+
+      const beginn = beginnSelect.value;
+      const beginnMin = minuten(beginn);
+      const maxEndeMin = Math.min(
+        minuten(geschlossen),
+        beginnMin + MAX_MINUTEN_PRO_TAG
+      );
+
+      let ende = gewuenschtesEnde || endeSelect.value || STANDARD_ENDE;
+      ende = zeitInBereich(ende, beginn, zeit(maxEndeMin), true);
+
+      endeSelect.innerHTML = optionen(beginn, zeit(maxEndeMin), ende, true);
+      endeSelect.value = ende;
+    }
+
+    function formularRendern() {
+      form.innerHTML = "";
+
+      for (const tag of WOCHENTAGE) {
+        const tagId = idFuer(tag);
+
+        const card = document.createElement("div");
+        card.className = "day-card";
+        card.id = `${tagId}_card`;
+
+        card.innerHTML = `
+          <div class="day-top">
+            <input
+              class="day-check"
+              type="checkbox"
+              id="${tagId}_aktiv"
+              onchange="tagGeaendert('${tag}')"
+            >
+
+            <label class="day-main" for="${tagId}_aktiv">
+              <div class="day-name">${tagMitDatum(tag)}</div>
+              <div class="day-sub" id="${tagId}_sub"></div>
+            </label>
+
+            <button class="change-btn" type="button" onclick="detailsUmschalten('${tag}')">
+              Ändern
+            </button>
+          </div>
+
+          <div class="details">
+            <div class="section-title">Ort</div>
+
+            <div class="venue-grid">
+              ${ORTE.map((ort) => `
+                <label class="venue-option">
+                  <input
+                    type="radio"
+                    name="${tagId}_ort"
+                    value="${ort}"
+                    ${ort === STANDARD_ORT ? "checked" : ""}
+                    onchange="ortGeaendert('${tag}')"
+                  >
+                  <span class="venue-label">${ort}</span>
+                </label>
+              `).join("")}
+            </div>
+
+            <div class="hours-line" id="${tagId}_oeffnung"></div>
+
+            <div class="section-title">Uhrzeit</div>
+
+            <div class="time-row">
+              <label class="time-field">
+                Beginn
+                <select id="${tagId}_beginn" onchange="beginnGeaendert('${tag}')"></select>
+              </label>
+
+              <label class="time-field">
+                Ende
+                <select id="${tagId}_ende" onchange="ansichtAktualisieren()"></select>
+              </label>
+            </div>
+
+            <div class="status-line" id="${tagId}_status"></div>
+          </div>
+        `;
+
+        form.appendChild(card);
+        rebuildBeginn(tag, false);
+      }
+
+      ansichtAktualisieren();
+    }
+
+    function tagGeaendert(tag) {
+      const tagId = idFuer(tag);
+      const aktiv = document.getElementById(`${tagId}_aktiv`).checked;
+      const card = document.getElementById(`${tagId}_card`);
+
+      card.classList.toggle("selected", aktiv);
+
+      // Absichtlich kein automatisches Aufklappen.
+      ansichtAktualisieren();
+    }
+
+    function detailsUmschalten(tag) {
+      const tagId = idFuer(tag);
+      const card = document.getElementById(`${tagId}_card`);
+      const button = card.querySelector(".change-btn");
+
+      const offen = card.classList.toggle("open");
+      button.textContent = offen ? "Schließen" : "Ändern";
+    }
+
+    function ortGeaendert(tag) {
+      rebuildBeginn(tag, true);
+      ansichtAktualisieren();
+    }
+
+    function beginnGeaendert(tag) {
+      rebuildEnde(tag);
+      ansichtAktualisieren();
+    }
+
+    function buchungenSammeln() {
+      const buchungen = [];
+      const fehler = [];
+      let gesamtMinuten = 0;
+
+      for (const tag of WOCHENTAGE) {
+        const tagId = idFuer(tag);
+        const aktiv = document.getElementById(`${tagId}_aktiv`).checked;
+        const card = document.getElementById(`${tagId}_card`);
+        const sub = document.getElementById(`${tagId}_sub`);
+        const status = document.getElementById(`${tagId}_status`);
+
+        const ort = ausgewaehlterOrt(tag);
+        const beginn = document.getElementById(`${tagId}_beginn`).value;
+        const ende = document.getElementById(`${tagId}_ende`).value;
+        const dauer = minuten(ende) - minuten(beginn);
+
+        card.classList.toggle("selected", aktiv);
+        status.className = "status-line";
+        status.textContent = "";
+
+        sub.textContent = `${ort} · ${beginn}–${ende}`;
+
+        if (!aktiv) {
+          continue;
+        }
+
+        sub.textContent = `${ort} · ${beginn}–${ende} · ${dauerText(dauer)}`;
+
+        if (dauer <= 0) {
+          fehler.push(`${tagMitDatum(tag)}: Ende muss nach Beginn liegen.`);
+          status.textContent = "Ende muss nach Beginn liegen.";
+          status.className = "status-line error";
+          continue;
+        }
+
+        if (dauer < MINDEST_MINUTEN) {
+          fehler.push(`${tagMitDatum(tag)}: mindestens 1 Stunde.`);
+          status.textContent = "Mindestens 1 Stunde.";
+          status.className = "status-line error";
+          continue;
+        }
+
+        if (dauer > MAX_MINUTEN_PRO_TAG) {
+          fehler.push(`${tagMitDatum(tag)}: maximal 16 Stunden pro Tag.`);
+          status.textContent = "Maximal 16 Stunden pro Tag.";
+          status.className = "status-line error";
+          continue;
+        }
+
+        gesamtMinuten += dauer;
+
+        buchungen.push({
+          tag: tag,
+          datum: datumText(tag),
+          iso_datum: isoDatum(tag),
+          tag_mit_datum: tagMitDatum(tag),
+          ort: ort,
+          beginn: beginn,
+          ende: ende,
+
+          // Kompatibilität mit dem bisherigen Python-Bot:
+          day: tagMitDatum(tag),
+          weekday: tag,
+          date: datumText(tag),
+          iso_date: isoDatum(tag),
+          venue: ort,
+          start: beginn,
+          end: ende
+        });
+
+        status.textContent = dauerText(dauer);
+      }
+
+      if (gesamtMinuten > MAX_MINUTEN_PRO_WOCHE) {
+        fehler.push("Woche: maximal 40 Stunden insgesamt.");
+      }
+
+      return { buchungen, fehler, gesamtMinuten };
+    }
+
+    function ansichtAktualisieren() {
+      const result = buchungenSammeln();
+
+      if (result.buchungen.length === 0 && result.fehler.length === 0) {
+        summary.className = "summary";
+        summary.textContent = "";
+        return;
+      }
+
+      let text = "";
+
+      if (result.buchungen.length > 0) {
+        text += result.buchungen
+          .map(item => `${item.tag_mit_datum}: ${item.ort}, ${item.beginn}–${item.ende}`)
+          .join("\n");
+
+        text += `\n\nGesamt: ${dauerText(result.gesamtMinuten)}`;
+      }
+
+      if (result.fehler.length > 0) {
+        if (text) {
+          text += "\n\n";
+        }
+
+        text += result.fehler.join("\n");
+      }
+
+      summary.textContent = text;
+      summary.className = result.fehler.length > 0
+        ? "summary visible error"
+        : "summary visible";
+    }
+
+    function submitBooking() {
+      const result = buchungenSammeln();
+
+      if (result.fehler.length > 0) {
+        tg.showAlert(result.fehler.join("\n"));
+        return;
+      }
+
+      if (result.buchungen.length === 0) {
+        tg.showAlert("Bitte mindestens einen Wochentag auswählen.");
+        return;
+      }
+
+      const deutsch = result.buchungen.map(item => ({
+        tag: item.tag,
+        datum: item.datum,
+        iso_datum: item.iso_datum,
+        tag_mit_datum: item.tag_mit_datum,
+        ort: item.ort,
+        beginn: item.beginn,
+        ende: item.ende
+      }));
+
+      const kompatibel = result.buchungen.map(item => ({
+        day: item.day,
+        weekday: item.weekday,
+        date: item.date,
+        iso_date: item.iso_date,
+        venue: item.venue,
+        start: item.start,
+        end: item.end
+      }));
+
+      tg.sendData(JSON.stringify({
+        buchungen: deutsch,
+        bookings: kompatibel,
+        gesamt_minuten: result.gesamtMinuten,
+        gesamt: dauerText(result.gesamtMinuten)
+      }));
+
+      tg.close();
+    }
+
+    formularRendern();
+  </script>
+</body>
+</html>
