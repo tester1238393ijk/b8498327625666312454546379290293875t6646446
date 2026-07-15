@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="utf-8">
-  <title>Sitzplatz buchen</title>
+  <title>Sitzplatz buchen · Anny Next</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -45,6 +45,18 @@
       letter-spacing: -0.02em;
     }
 
+    .next-banner {
+      margin: -4px 0 14px;
+      padding: 9px 12px;
+      border: 1px solid rgba(255, 199, 107, 0.4);
+      border-radius: 12px;
+      background: rgba(255, 199, 107, 0.1);
+      color: #ffd995;
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.4;
+    }
+
     .day-card {
       border: 1px solid var(--line);
       border-radius: 16px;
@@ -56,6 +68,28 @@
     .day-card.selected {
       border-color: var(--button);
       background: var(--card-selected);
+    }
+
+    .day-card.locked {
+      opacity: 0.46;
+      background: var(--card);
+    }
+
+    .day-card.locked .day-main,
+    .day-card.locked .change-btn,
+    .day-card.locked select,
+    .day-card.locked .venue-label {
+      cursor: not-allowed;
+    }
+
+    .day-card.locked .change-btn {
+      border-color: var(--line);
+      background: transparent;
+      color: var(--hint);
+    }
+
+    option:disabled {
+      color: var(--hint);
     }
 
     .day-top {
@@ -279,7 +313,7 @@
 </head>
 
 <body>
-  <h1>Sitzplatz buchen</h1>
+  <h1 id="week-heading">Nächste Woche</h1>
 
   <div id="form"></div>
 
@@ -314,22 +348,7 @@
       "Sonntag"
     ];
 
-    const MONATE = [
-      "Januar",
-      "Februar",
-      "März",
-      "April",
-      "Mai",
-      "Juni",
-      "Juli",
-      "August",
-      "September",
-      "Oktober",
-      "November",
-      "Dezember"
-    ];
-
-    const ORTE = ["MI", "Stammgelände"];
+    const ORTE = ["Stammgelände", "Sport Campus", "MI"];
 
     const OEFFNUNGSZEITEN = {
       "MI": {
@@ -349,12 +368,21 @@
         "Freitag": ["08:00", "24:00"],
         "Samstag": ["09:00", "22:00"],
         "Sonntag": ["09:00", "22:00"]
+      },
+      "Sport Campus": {
+        "Montag": ["08:00", "21:00"],
+        "Dienstag": ["08:00", "21:00"],
+        "Mittwoch": ["08:00", "21:00"],
+        "Donnerstag": ["08:00", "21:00"],
+        "Freitag": ["08:00", "21:00"],
+        "Samstag": null,
+        "Sonntag": null
       }
     };
 
-    const STANDARD_ORT = "MI";
+    const STANDARD_ORT = "Stammgelände";
     const STANDARD_BEGINN = "09:00";
-    const STANDARD_ENDE = "18:00";
+    const STANDARD_ENDE = "14:00";
 
     const SCHRITT_MINUTEN = 30;
     const MINDEST_MINUTEN = 60;
@@ -364,39 +392,60 @@
     const form = document.getElementById("form");
     const summary = document.getElementById("summary");
 
-    function montagDerNaechstenWoche() {
-      const heute = new Date();
-
+    function montagDieserWoche(referenz = new Date()) {
+      const heute = new Date(referenz);
       heute.setHours(12, 0, 0, 0);
-
       const heutigerWochentag = heute.getDay();
       const tageSeitMontag = heutigerWochentag === 0
         ? 6
         : heutigerWochentag - 1;
-
       const montagDieseWoche = new Date(heute);
       montagDieseWoche.setDate(heute.getDate() - tageSeitMontag);
-
-      const montagNaechsteWoche = new Date(montagDieseWoche);
-      montagNaechsteWoche.setDate(montagDieseWoche.getDate() + 7);
-
-      return montagNaechsteWoche;
+      return montagDieseWoche;
     }
 
-    const START_NAECHSTE_WOCHE = montagDerNaechstenWoche();
+    function planLesen() {
+      const raw = new URLSearchParams(window.location.search).get("plan");
+      if (!raw) return {bookings: [], defaults: []};
+      try {
+        const padded = raw + "=".repeat((4 - raw.length % 4) % 4);
+        const bytes = Uint8Array.from(atob(padded.replaceAll("-", "+").replaceAll("_", "/")), char => char.charCodeAt(0));
+        const parsed = JSON.parse(new TextDecoder().decode(bytes));
+        return parsed && typeof parsed === "object" ? parsed : {bookings: [], defaults: []};
+      } catch (_error) {
+        return {bookings: [], defaults: []};
+      }
+    }
+
+    const PLAN = planLesen();
+    const FORM_SCOPE = PLAN.scope === "current" ? "current" : "next";
+    const PLAN_HAT_AUSWAHL = Array.isArray(PLAN.bookings) && PLAN.bookings.length > 0;
+    const PLAN_JETZT = PLAN.now ? new Date(PLAN.now) : new Date();
+    const START_WOCHE = (() => {
+      if (PLAN.week_start) {
+        const [jahr, monat, tag] = PLAN.week_start.split("-").map(Number);
+        return new Date(jahr, monat - 1, tag, 12, 0, 0, 0);
+      }
+      const montag = montagDieserWoche(PLAN_JETZT);
+      if (FORM_SCOPE === "next") montag.setDate(montag.getDate() + 7);
+      return montag;
+    })();
+
+    document.getElementById("week-heading").textContent =
+      FORM_SCOPE === "current" ? "Diese Woche" : "Nächste Woche";
 
     function datumFuerTag(tag) {
       const index = WOCHENTAGE.indexOf(tag);
-      const datum = new Date(START_NAECHSTE_WOCHE);
+      const datum = new Date(START_WOCHE);
 
-      datum.setDate(START_NAECHSTE_WOCHE.getDate() + index);
+      datum.setDate(START_WOCHE.getDate() + index);
 
       return datum;
     }
 
     function datumText(tag) {
       const datum = datumFuerTag(tag);
-      return `${datum.getDate()}. ${MONATE[datum.getMonth()]}`;
+      return `${String(datum.getDate()).padStart(2, "0")}.${String(datum.getMonth() + 1).padStart(2, "0")}.${datum.getFullYear()}`;
     }
 
     function isoDatum(tag) {
@@ -406,6 +455,61 @@
       const tagNummer = String(datum.getDate()).padStart(2, "0");
 
       return `${jahr}-${monat}-${tagNummer}`;
+    }
+
+    const PLAN_BUCHUNGEN = new Map(
+      (Array.isArray(PLAN.bookings) ? PLAN.bookings : []).map(item => [item.iso_date, item])
+    );
+
+    function jetzt() {
+      return new Date(Math.max(Date.now(), PLAN_JETZT.getTime()));
+    }
+
+    function istHeute(datum) {
+      const aktuell = jetzt();
+      return datum.getFullYear() === aktuell.getFullYear()
+        && datum.getMonth() === aktuell.getMonth()
+        && datum.getDate() === aktuell.getDate();
+    }
+
+    function istVergangenerTag(tag) {
+      if (FORM_SCOPE !== "current") return false;
+      const datum = datumFuerTag(tag);
+      datum.setHours(0, 0, 0, 0);
+      const aktuell = jetzt();
+      aktuell.setHours(0, 0, 0, 0);
+      return datum < aktuell;
+    }
+
+    function tagIstGesperrt(tag) {
+      if (FORM_SCOPE !== "current") return false;
+      if (istVergangenerTag(tag)) return true;
+      const datum = datumFuerTag(tag);
+      const booking = PLAN_BUCHUNGEN.get(isoDatum(tag));
+      if (!istHeute(datum)) return false;
+      if (!booking) {
+        const aktuell = jetzt();
+        const fruehestens = Math.ceil(
+          (aktuell.getHours() * 60 + aktuell.getMinutes() + 1) / SCHRITT_MINUTEN
+        ) * SCHRITT_MINUTEN;
+        const spaetesteSchliessung = Math.max(...ORTE.map(ort => {
+          const fenster = oeffnungszeiten(tag, ort);
+          return fenster ? minuten(fenster[1]) : 0;
+        }));
+        return fruehestens + MINDEST_MINUTEN > spaetesteSchliessung;
+      }
+      const status = String(booking.status || "");
+      const aktuell = jetzt();
+      const aktuelleMinuten = aktuell.getHours() * 60 + aktuell.getMinutes();
+      return status === "done" || status === "running"
+        || minuten(booking.start || booking.beginn || "00:00") <= aktuelleMinuten;
+    }
+
+    function fruehesterBeginn(tag) {
+      if (FORM_SCOPE !== "current" || !istHeute(datumFuerTag(tag))) return null;
+      const aktuell = jetzt();
+      const aktuellMinuten = aktuell.getHours() * 60 + aktuell.getMinutes();
+      return Math.min(1440, Math.ceil((aktuellMinuten + 1) / SCHRITT_MINUTEN) * SCHRITT_MINUTEN);
     }
 
     function tagMitDatum(tag) {
@@ -459,13 +563,17 @@
       return OEFFNUNGSZEITEN[ort][tag];
     }
 
+    function ortFuerPlan(ort) {
+      return ort === "Main Campus" ? "Stammgelände" : ort;
+    }
+
     function zeitInBereich(wert, start, ende, istEnde) {
       const wertMin = minuten(wert);
       const startMin = minuten(start);
       const endeMin = minuten(ende);
 
       const erster = istEnde ? startMin + MINDEST_MINUTEN : startMin;
-      const letzter = istEnde ? endeMin : endeMin - SCHRITT_MINUTEN;
+      const letzter = istEnde ? endeMin : endeMin - MINDEST_MINUTEN;
 
       if (wertMin < erster) {
         return zeit(erster);
@@ -478,19 +586,20 @@
       return wert;
     }
 
-    function optionen(von, bis, ausgewaehlt, istEnde) {
+    function optionen(von, bis, ausgewaehlt, istEnde, fruehestens = null) {
       const vonMin = minuten(von);
       const bisMin = minuten(bis);
 
       const erster = istEnde ? vonMin + MINDEST_MINUTEN : vonMin;
-      const letzter = istEnde ? bisMin : bisMin - SCHRITT_MINUTEN;
+      const letzter = istEnde ? bisMin : bisMin - MINDEST_MINUTEN;
 
       let html = "";
 
       for (let t = erster; t <= letzter; t += SCHRITT_MINUTEN) {
         const value = zeit(t);
         const selected = value === ausgewaehlt ? "selected" : "";
-        html += `<option value="${value}" ${selected}>${value}</option>`;
+        const disabled = !istEnde && fruehestens !== null && t < fruehestens ? "disabled" : "";
+        html += `<option value="${value}" ${selected} ${disabled}>${value}</option>`;
       }
 
       return html;
@@ -499,10 +608,23 @@
     function rebuildBeginn(tag, behalten = true) {
       const tagId = idFuer(tag);
       const ort = ausgewaehlterOrt(tag);
-      const [offen, geschlossen] = oeffnungszeiten(tag, ort);
-
       const beginnSelect = document.getElementById(`${tagId}_beginn`);
       const endeSelect = document.getElementById(`${tagId}_ende`);
+      const fenster = oeffnungszeiten(tag, ort);
+      const gesperrt = tagIstGesperrt(tag);
+
+      if (!fenster) {
+        beginnSelect.innerHTML = '<option value="">Geschlossen</option>';
+        endeSelect.innerHTML = '<option value="">Geschlossen</option>';
+        beginnSelect.disabled = true;
+        endeSelect.disabled = true;
+        document.getElementById(`${tagId}_oeffnung`).textContent = "Geschlossen";
+        return;
+      }
+
+      const [offen, geschlossen] = fenster;
+      beginnSelect.disabled = gesperrt;
+      endeSelect.disabled = gesperrt;
 
       let beginn = behalten ? beginnSelect.value : STANDARD_BEGINN;
       let ende = behalten ? endeSelect.value : STANDARD_ENDE;
@@ -510,7 +632,12 @@
       beginn = zeitInBereich(beginn, offen, geschlossen, false);
       ende = zeitInBereich(ende, offen, geschlossen, true);
 
-      beginnSelect.innerHTML = optionen(offen, geschlossen, beginn, false);
+      const fruehestens = fruehesterBeginn(tag);
+      if (!gesperrt && fruehestens !== null && minuten(beginn) < fruehestens) {
+        beginn = zeit(fruehestens);
+      }
+
+      beginnSelect.innerHTML = optionen(offen, geschlossen, beginn, false, fruehestens);
       beginnSelect.value = beginn;
 
       rebuildEnde(tag, ende);
@@ -522,10 +649,13 @@
     function rebuildEnde(tag, gewuenschtesEnde = null) {
       const tagId = idFuer(tag);
       const ort = ausgewaehlterOrt(tag);
-      const [offen, geschlossen] = oeffnungszeiten(tag, ort);
+      const fenster = oeffnungszeiten(tag, ort);
+      if (!fenster) return;
+      const [offen, geschlossen] = fenster;
 
       const beginnSelect = document.getElementById(`${tagId}_beginn`);
       const endeSelect = document.getElementById(`${tagId}_ende`);
+      const gesperrt = tagIstGesperrt(tag);
 
       const beginn = beginnSelect.value;
       const beginnMin = minuten(beginn);
@@ -539,6 +669,35 @@
 
       endeSelect.innerHTML = optionen(beginn, zeit(maxEndeMin), ende, true);
       endeSelect.value = ende;
+      endeSelect.disabled = gesperrt;
+    }
+
+    function planAnwenden() {
+      const defaults = new Map((Array.isArray(PLAN.defaults) ? PLAN.defaults : []).map(item => [item.iso_date, item]));
+      const bookings = PLAN_BUCHUNGEN;
+
+      for (const tag of WOCHENTAGE) {
+        const tagId = idFuer(tag);
+        const iso = isoDatum(tag);
+        const booking = bookings.get(iso);
+        const item = booking || defaults.get(iso);
+        if (!item) continue;
+
+        const ort = ortFuerPlan(item.venue || item.ort || STANDARD_ORT);
+        const radio = document.querySelector(`input[name="${tagId}_ort"][value="${ort}"]`);
+        if (radio) radio.checked = true;
+        rebuildBeginn(tag, false);
+
+        const beginnSelect = document.getElementById(`${tagId}_beginn`);
+        const wantedStart = item.start || item.beginn || STANDARD_BEGINN;
+        if ([...beginnSelect.options].some(option => option.value === wantedStart)) beginnSelect.value = wantedStart;
+        rebuildEnde(tag, item.end || item.ende || STANDARD_ENDE);
+
+        if (booking) {
+          document.getElementById(`${tagId}_aktiv`).checked = true;
+          document.getElementById(`${tagId}_card`).classList.add("selected");
+        }
+      }
     }
 
     function formularRendern() {
@@ -546,9 +705,10 @@
 
       for (const tag of WOCHENTAGE) {
         const tagId = idFuer(tag);
+        const gesperrt = tagIstGesperrt(tag);
 
         const card = document.createElement("div");
-        card.className = "day-card";
+        card.className = `day-card${gesperrt ? " locked" : ""}`;
         card.id = `${tagId}_card`;
 
         card.innerHTML = `
@@ -558,6 +718,7 @@
               type="checkbox"
               id="${tagId}_aktiv"
               onchange="tagGeaendert('${tag}')"
+              ${gesperrt ? "disabled" : ""}
             >
 
             <label class="day-main" for="${tagId}_aktiv">
@@ -565,8 +726,8 @@
               <div class="day-sub" id="${tagId}_sub"></div>
             </label>
 
-            <button class="change-btn" type="button" onclick="detailsUmschalten('${tag}')">
-              Ändern
+            <button class="change-btn" type="button" onclick="detailsUmschalten('${tag}')" ${gesperrt ? "disabled" : ""}>
+              ${gesperrt ? "Vorbei" : "Ändern"}
             </button>
           </div>
 
@@ -581,6 +742,7 @@
                     name="${tagId}_ort"
                     value="${ort}"
                     ${ort === STANDARD_ORT ? "checked" : ""}
+                    ${gesperrt ? "disabled" : ""}
                     onchange="ortGeaendert('${tag}')"
                   >
                   <span class="venue-label">${ort}</span>
@@ -612,10 +774,12 @@
         rebuildBeginn(tag, false);
       }
 
+      planAnwenden();
       ansichtAktualisieren();
     }
 
     function tagGeaendert(tag) {
+      if (tagIstGesperrt(tag)) return;
       const tagId = idFuer(tag);
       const aktiv = document.getElementById(`${tagId}_aktiv`).checked;
       const card = document.getElementById(`${tagId}_card`);
@@ -627,6 +791,7 @@
     }
 
     function detailsUmschalten(tag) {
+      if (tagIstGesperrt(tag)) return;
       const tagId = idFuer(tag);
       const card = document.getElementById(`${tagId}_card`);
       const button = card.querySelector(".change-btn");
@@ -669,6 +834,13 @@
         sub.textContent = `${ort} · ${beginn}–${ende}`;
 
         if (!aktiv) {
+          continue;
+        }
+
+        if (!oeffnungszeiten(tag, ort)) {
+          fehler.push(`${tagMitDatum(tag)}: ${ort} ist geschlossen.`);
+          status.textContent = "Geschlossen";
+          status.className = "status-line error";
           continue;
         }
 
@@ -767,7 +939,7 @@
         return;
       }
 
-      if (result.buchungen.length === 0) {
+      if (result.buchungen.length === 0 && !PLAN_HAT_AUSWAHL) {
         tg.showAlert("Bitte mindestens einen Wochentag auswählen.");
         return;
       }
@@ -795,6 +967,8 @@
       tg.sendData(JSON.stringify({
         buchungen: deutsch,
         bookings: kompatibel,
+        replace_week_start: isoDatum("Montag"),
+        week_scope: FORM_SCOPE,
         gesamt_minuten: result.gesamtMinuten,
         gesamt: dauerText(result.gesamtMinuten)
       }));
