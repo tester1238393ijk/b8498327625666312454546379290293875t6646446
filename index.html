@@ -210,6 +210,24 @@
       margin-bottom: 8px;
     }
 
+    .lunch-row {
+      margin: 10px 0 4px;
+    }
+
+    .lunch-row label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--hint);
+      font-size: 13px;
+      font-weight: 850;
+    }
+
+    .lunch-row select {
+      width: min(210px, 58%);
+    }
+
     label.time-field {
       display: flex;
       flex-direction: column;
@@ -388,6 +406,12 @@
     const MINDEST_MINUTEN = 60;
     const MAX_MINUTEN_PRO_TAG = 16 * 60;
     const MAX_MINUTEN_PRO_WOCHE = 40 * 60;
+    const MITTAGSPAUSEN = {
+      "11:00": "12:00",
+      "11:30": "12:30",
+      "12:00": "13:00",
+      "12:30": "13:30"
+    };
 
     const form = document.getElementById("form");
     const summary = document.getElementById("summary");
@@ -692,6 +716,11 @@
         const wantedStart = item.start || item.beginn || STANDARD_BEGINN;
         if ([...beginnSelect.options].some(option => option.value === wantedStart)) beginnSelect.value = wantedStart;
         rebuildEnde(tag, item.end || item.ende || STANDARD_ENDE);
+        const lunch = item.lunch_start || "";
+        const lunchSelect = document.getElementById(`${tagId}_lunch`);
+        if ([...lunchSelect.options].some(option => option.value === lunch)) {
+          lunchSelect.value = lunch;
+        }
 
         if (booking) {
           document.getElementById(`${tagId}_aktiv`).checked = true;
@@ -766,6 +795,18 @@
               </label>
             </div>
 
+            <div class="lunch-row">
+              <label>
+                Lunch time
+                <select id="${tagId}_lunch" onchange="ansichtAktualisieren()" ${gesperrt ? "disabled" : ""}>
+                  <option value="">Off</option>
+                  ${Object.entries(MITTAGSPAUSEN).map(([start, ende]) =>
+                    `<option value="${start}">${start}–${ende}</option>`
+                  ).join("")}
+                </select>
+              </label>
+            </div>
+
             <div class="status-line" id="${tagId}_status"></div>
           </div>
         `;
@@ -825,13 +866,17 @@
         const ort = ausgewaehlterOrt(tag);
         const beginn = document.getElementById(`${tagId}_beginn`).value;
         const ende = document.getElementById(`${tagId}_ende`).value;
-        const dauer = minuten(ende) - minuten(beginn);
+        const lunchStart = document.getElementById(`${tagId}_lunch`).value;
+        const lunchEnde = lunchStart ? MITTAGSPAUSEN[lunchStart] : "";
+        const gesamtDauer = minuten(ende) - minuten(beginn);
+        const dauer = gesamtDauer - (lunchStart ? 60 : 0);
 
         card.classList.toggle("selected", aktiv);
         status.className = "status-line";
         status.textContent = "";
 
-        sub.textContent = `${ort} · ${beginn}–${ende}`;
+        sub.textContent = `${ort} · ${beginn}–${ende}` +
+          (lunchStart ? ` · lunch ${lunchStart}–${lunchEnde}` : "");
 
         if (!aktiv) {
           continue;
@@ -844,25 +889,36 @@
           continue;
         }
 
-        sub.textContent = `${ort} · ${beginn}–${ende} · ${dauerText(dauer)}`;
+        sub.textContent = `${ort} · ${beginn}–${ende} · ${dauerText(dauer)}` +
+          (lunchStart ? ` · lunch ${lunchStart}–${lunchEnde}` : "");
 
-        if (dauer <= 0) {
+        if (gesamtDauer <= 0) {
           fehler.push(`${tagMitDatum(tag)}: Ende muss nach Beginn liegen.`);
           status.textContent = "Ende muss nach Beginn liegen.";
           status.className = "status-line error";
           continue;
         }
 
-        if (dauer < MINDEST_MINUTEN) {
+        if (gesamtDauer < MINDEST_MINUTEN) {
           fehler.push(`${tagMitDatum(tag)}: mindestens 1 Stunde.`);
           status.textContent = "Mindestens 1 Stunde.";
           status.className = "status-line error";
           continue;
         }
 
-        if (dauer > MAX_MINUTEN_PRO_TAG) {
+        if (gesamtDauer > MAX_MINUTEN_PRO_TAG) {
           fehler.push(`${tagMitDatum(tag)}: maximal 16 Stunden pro Tag.`);
           status.textContent = "Maximal 16 Stunden pro Tag.";
+          status.className = "status-line error";
+          continue;
+        }
+
+        if (lunchStart && (
+          minuten(lunchStart) - minuten(beginn) < MINDEST_MINUTEN
+          || minuten(ende) - minuten(lunchEnde) < MINDEST_MINUTEN
+        )) {
+          fehler.push(`${tagMitDatum(tag)}: Lunch time needs one booked hour on both sides.`);
+          status.textContent = "Lunch time does not fit.";
           status.className = "status-line error";
           continue;
         }
@@ -877,6 +933,7 @@
           ort: ort,
           beginn: beginn,
           ende: ende,
+          lunch_start: lunchStart || undefined,
 
           // Kompatibilität mit dem bisherigen Python-Bot:
           day: tagMitDatum(tag),
@@ -911,7 +968,8 @@
 
       if (result.buchungen.length > 0) {
         text += result.buchungen
-          .map(item => `${item.tag_mit_datum}: ${item.ort}, ${item.beginn}–${item.ende}`)
+          .map(item => `${item.tag_mit_datum}: ${item.ort}, ${item.beginn}–${item.ende}` +
+            (item.lunch_start ? `, lunch ${item.lunch_start}–${MITTAGSPAUSEN[item.lunch_start]}` : ""))
           .join("\n");
 
         text += `\n\nGesamt: ${dauerText(result.gesamtMinuten)}`;
@@ -951,7 +1009,8 @@
         tag_mit_datum: item.tag_mit_datum,
         ort: item.ort,
         beginn: item.beginn,
-        ende: item.ende
+        ende: item.ende,
+        lunch_start: item.lunch_start
       }));
 
       const kompatibel = result.buchungen.map(item => ({
@@ -961,7 +1020,8 @@
         iso_date: item.iso_date,
         venue: item.venue,
         start: item.start,
-        end: item.end
+        end: item.end,
+        lunch_start: item.lunch_start
       }));
 
       tg.sendData(JSON.stringify({
