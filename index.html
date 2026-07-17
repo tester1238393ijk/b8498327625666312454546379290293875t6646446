@@ -337,7 +337,7 @@
 
   <div class="summary" id="summary"></div>
 
-  <button class="submit-btn" onclick="submitBooking()">Buchung senden</button>
+  <button class="submit-btn" id="submit-button" onclick="submitBooking()">Buchung senden</button>
 
   <script>
     const tg = window.Telegram && window.Telegram.WebApp
@@ -400,7 +400,7 @@
 
     const STANDARD_ORT = "Stammgelände";
     const STANDARD_BEGINN = "09:00";
-    const STANDARD_ENDE = "14:00";
+    const STANDARD_ENDE = "15:00";
 
     const SCHRITT_MINUTEN = 30;
     const MINDEST_MINUTEN = 60;
@@ -442,6 +442,12 @@
     }
 
     const PLAN = planLesen();
+    const LANGUAGE = PLAN.language === "de" ? "de" : "en";
+    document.documentElement.lang = LANGUAGE;
+    const TEXT = {
+      en: {thisWeek:"This week",nextWeek:"Next week",send:"Send booking",change:"Change",close:"Close",passed:"Passed",venue:"Venue",time:"Time",start:"Start",end:"End",lunch:"Lunch time",off:"Off",closed:"Closed",hours:"Opening hours",total:"Total",select:"Select at least one weekday.",hour:"hr",hoursShort:"hrs",minute:"min"},
+      de: {thisWeek:"Diese Woche",nextWeek:"Nächste Woche",send:"Buchung senden",change:"Ändern",close:"Schließen",passed:"Vorbei",venue:"Ort",time:"Uhrzeit",start:"Beginn",end:"Ende",lunch:"Mittagspause",off:"Aus",closed:"Geschlossen",hours:"Öffnungszeiten",total:"Gesamt",select:"Bitte mindestens einen Wochentag auswählen.",hour:"Std.",hoursShort:"Std.",minute:"Min."}
+    }[LANGUAGE];
     const FORM_SCOPE = PLAN.scope === "current" ? "current" : "next";
     const PLAN_HAT_AUSWAHL = Array.isArray(PLAN.bookings) && PLAN.bookings.length > 0;
     const PLAN_JETZT = PLAN.now ? new Date(PLAN.now) : new Date();
@@ -456,7 +462,17 @@
     })();
 
     document.getElementById("week-heading").textContent =
-      FORM_SCOPE === "current" ? "Diese Woche" : "Nächste Woche";
+      FORM_SCOPE === "current" ? TEXT.thisWeek : TEXT.nextWeek;
+    document.getElementById("submit-button").textContent = TEXT.send;
+
+    function tagAnzeige(tag) {
+      if (LANGUAGE === "de") return tag;
+      return ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"][WOCHENTAGE.indexOf(tag)];
+    }
+
+    function ortAnzeige(ort) {
+      return LANGUAGE === "en" && ort === "Stammgelände" ? "Main Campus" : ort;
+    }
 
     function datumFuerTag(tag) {
       const index = WOCHENTAGE.indexOf(tag);
@@ -537,7 +553,7 @@
     }
 
     function tagMitDatum(tag) {
-      return `${tag}, ${datumText(tag)}`;
+      return `${tagAnzeige(tag)}, ${datumText(tag)}`;
     }
 
     function idFuer(text) {
@@ -571,10 +587,10 @@
       const m = minutenwert % 60;
 
       if (m === 0) {
-        return `${h} Std.`;
+        return `${h} ${TEXT.hoursShort}`;
       }
 
-      return `${h} Std. ${m} Min.`;
+      return `${h} ${TEXT.hoursShort} ${m} ${TEXT.minute}`;
     }
 
     function ausgewaehlterOrt(tag) {
@@ -638,11 +654,11 @@
       const gesperrt = tagIstGesperrt(tag);
 
       if (!fenster) {
-        beginnSelect.innerHTML = '<option value="">Geschlossen</option>';
-        endeSelect.innerHTML = '<option value="">Geschlossen</option>';
+        beginnSelect.innerHTML = `<option value="">${TEXT.closed}</option>`;
+        endeSelect.innerHTML = `<option value="">${TEXT.closed}</option>`;
         beginnSelect.disabled = true;
         endeSelect.disabled = true;
-        document.getElementById(`${tagId}_oeffnung`).textContent = "Geschlossen";
+        document.getElementById(`${tagId}_oeffnung`).textContent = TEXT.closed;
         return;
       }
 
@@ -667,7 +683,7 @@
       rebuildEnde(tag, ende);
 
       document.getElementById(`${tagId}_oeffnung`).textContent =
-        `Öffnungszeiten: ${offen}–${geschlossen}`;
+        `${TEXT.hours}: ${offen}–${geschlossen}`;
     }
 
     function rebuildEnde(tag, gewuenschtesEnde = null) {
@@ -694,6 +710,32 @@
       endeSelect.innerHTML = optionen(beginn, zeit(maxEndeMin), ende, true);
       endeSelect.value = ende;
       endeSelect.disabled = gesperrt;
+      mittagAktualisieren(tag, null, true);
+    }
+
+    function mittagAktualisieren(tag, gewuenscht = null, standardErlaubt = true) {
+      const tagId = idFuer(tag);
+      const select = document.getElementById(`${tagId}_lunch`);
+      if (!select) return;
+      const beginn = document.getElementById(`${tagId}_beginn`).value;
+      const ende = document.getElementById(`${tagId}_ende`).value;
+      const vorher = gewuenscht === null ? select.value : gewuenscht;
+      const erlaubt = Object.entries(MITTAGSPAUSEN).filter(([start, lunchEnde]) =>
+        minuten(beginn) < minuten("12:30")
+        && minuten(start) - minuten(beginn) >= MINDEST_MINUTEN
+        && minuten(ende) - minuten(lunchEnde) >= MINDEST_MINUTEN
+      );
+      select.innerHTML = `<option value="">${TEXT.off}</option>` + erlaubt.map(([start, lunchEnde]) =>
+        `<option value="${start}">${start}–${lunchEnde}</option>`
+      ).join("");
+      if (erlaubt.some(([start]) => start === vorher)) {
+        select.value = vorher;
+      } else if (standardErlaubt && minuten(beginn) < minuten("11:20") && erlaubt.some(([start]) => start === "12:30")) {
+        select.value = "12:30";
+      } else {
+        select.value = "";
+      }
+      select.disabled = tagIstGesperrt(tag) || erlaubt.length === 0;
     }
 
     function planAnwenden() {
@@ -717,10 +759,7 @@
         if ([...beginnSelect.options].some(option => option.value === wantedStart)) beginnSelect.value = wantedStart;
         rebuildEnde(tag, item.end || item.ende || STANDARD_ENDE);
         const lunch = item.lunch_start || "";
-        const lunchSelect = document.getElementById(`${tagId}_lunch`);
-        if ([...lunchSelect.options].some(option => option.value === lunch)) {
-          lunchSelect.value = lunch;
-        }
+        mittagAktualisieren(tag, lunch, !booking && !Object.prototype.hasOwnProperty.call(item, "lunch_start"));
 
         if (booking) {
           document.getElementById(`${tagId}_aktiv`).checked = true;
@@ -756,12 +795,12 @@
             </label>
 
             <button class="change-btn" type="button" onclick="detailsUmschalten('${tag}')" ${gesperrt ? "disabled" : ""}>
-              ${gesperrt ? "Vorbei" : "Ändern"}
+              ${gesperrt ? TEXT.passed : TEXT.change}
             </button>
           </div>
 
           <div class="details">
-            <div class="section-title">Ort</div>
+            <div class="section-title">${TEXT.venue}</div>
 
             <div class="venue-grid">
               ${ORTE.map((ort) => `
@@ -774,35 +813,32 @@
                     ${gesperrt ? "disabled" : ""}
                     onchange="ortGeaendert('${tag}')"
                   >
-                  <span class="venue-label">${ort}</span>
+                  <span class="venue-label">${ortAnzeige(ort)}</span>
                 </label>
               `).join("")}
             </div>
 
             <div class="hours-line" id="${tagId}_oeffnung"></div>
 
-            <div class="section-title">Uhrzeit</div>
+            <div class="section-title">${TEXT.time}</div>
 
             <div class="time-row">
               <label class="time-field">
-                Beginn
+                ${TEXT.start}
                 <select id="${tagId}_beginn" onchange="beginnGeaendert('${tag}')"></select>
               </label>
 
               <label class="time-field">
-                Ende
+                ${TEXT.end}
                 <select id="${tagId}_ende" onchange="ansichtAktualisieren()"></select>
               </label>
             </div>
 
             <div class="lunch-row">
               <label>
-                Lunch time
+                ${TEXT.lunch}
                 <select id="${tagId}_lunch" onchange="ansichtAktualisieren()" ${gesperrt ? "disabled" : ""}>
-                  <option value="">Off</option>
-                  ${Object.entries(MITTAGSPAUSEN).map(([start, ende]) =>
-                    `<option value="${start}">${start}–${ende}</option>`
-                  ).join("")}
+                  <option value="">${TEXT.off}</option>
                 </select>
               </label>
             </div>
@@ -838,7 +874,7 @@
       const button = card.querySelector(".change-btn");
 
       const offen = card.classList.toggle("open");
-      button.textContent = offen ? "Schließen" : "Ändern";
+      button.textContent = offen ? TEXT.close : TEXT.change;
     }
 
     function ortGeaendert(tag) {
@@ -875,8 +911,8 @@
         status.className = "status-line";
         status.textContent = "";
 
-        sub.textContent = `${ort} · ${beginn}–${ende}` +
-          (lunchStart ? ` · lunch ${lunchStart}–${lunchEnde}` : "");
+        sub.textContent = `${ortAnzeige(ort)} · ${beginn}–${ende}` +
+          (lunchStart ? ` · ${TEXT.lunch.toLowerCase()} ${lunchStart}–${lunchEnde}` : "");
 
         if (!aktiv) {
           continue;
@@ -884,31 +920,31 @@
 
         if (!oeffnungszeiten(tag, ort)) {
           fehler.push(`${tagMitDatum(tag)}: ${ort} ist geschlossen.`);
-          status.textContent = "Geschlossen";
+          status.textContent = TEXT.closed;
           status.className = "status-line error";
           continue;
         }
 
-        sub.textContent = `${ort} · ${beginn}–${ende} · ${dauerText(dauer)}` +
-          (lunchStart ? ` · lunch ${lunchStart}–${lunchEnde}` : "");
+        sub.textContent = `${ortAnzeige(ort)} · ${beginn}–${ende} · ${dauerText(dauer)}` +
+          (lunchStart ? ` · ${TEXT.lunch.toLowerCase()} ${lunchStart}–${lunchEnde}` : "");
 
         if (gesamtDauer <= 0) {
-          fehler.push(`${tagMitDatum(tag)}: Ende muss nach Beginn liegen.`);
-          status.textContent = "Ende muss nach Beginn liegen.";
+          fehler.push(`${tagMitDatum(tag)}: ${LANGUAGE === "de" ? "Ende muss nach Beginn liegen." : "End must be after start."}`);
+          status.textContent = LANGUAGE === "de" ? "Ende muss nach Beginn liegen." : "End must be after start.";
           status.className = "status-line error";
           continue;
         }
 
         if (gesamtDauer < MINDEST_MINUTEN) {
-          fehler.push(`${tagMitDatum(tag)}: mindestens 1 Stunde.`);
-          status.textContent = "Mindestens 1 Stunde.";
+          fehler.push(`${tagMitDatum(tag)}: ${LANGUAGE === "de" ? "mindestens 1 Stunde." : "minimum 1 hour."}`);
+          status.textContent = LANGUAGE === "de" ? "Mindestens 1 Stunde." : "Minimum 1 hour.";
           status.className = "status-line error";
           continue;
         }
 
         if (gesamtDauer > MAX_MINUTEN_PRO_TAG) {
-          fehler.push(`${tagMitDatum(tag)}: maximal 16 Stunden pro Tag.`);
-          status.textContent = "Maximal 16 Stunden pro Tag.";
+          fehler.push(`${tagMitDatum(tag)}: ${LANGUAGE === "de" ? "maximal 16 Stunden pro Tag." : "maximum 16 hours per day."}`);
+          status.textContent = LANGUAGE === "de" ? "Maximal 16 Stunden pro Tag." : "Maximum 16 hours per day.";
           status.className = "status-line error";
           continue;
         }
@@ -917,8 +953,8 @@
           minuten(lunchStart) - minuten(beginn) < MINDEST_MINUTEN
           || minuten(ende) - minuten(lunchEnde) < MINDEST_MINUTEN
         )) {
-          fehler.push(`${tagMitDatum(tag)}: Lunch time needs one booked hour on both sides.`);
-          status.textContent = "Lunch time does not fit.";
+          fehler.push(`${tagMitDatum(tag)}: ${LANGUAGE === "de" ? "Die Mittagspause braucht auf beiden Seiten eine gebuchte Stunde." : "Lunch time needs one booked hour on both sides."}`);
+          status.textContent = LANGUAGE === "de" ? "Mittagspause passt nicht." : "Lunch time does not fit.";
           status.className = "status-line error";
           continue;
         }
@@ -949,7 +985,7 @@
       }
 
       if (gesamtMinuten > MAX_MINUTEN_PRO_WOCHE) {
-        fehler.push("Woche: maximal 40 Stunden insgesamt.");
+        fehler.push(LANGUAGE === "de" ? "Woche: maximal 40 Stunden insgesamt." : "Week: maximum 40 hours total.");
       }
 
       return { buchungen, fehler, gesamtMinuten };
@@ -968,11 +1004,11 @@
 
       if (result.buchungen.length > 0) {
         text += result.buchungen
-          .map(item => `${item.tag_mit_datum}: ${item.ort}, ${item.beginn}–${item.ende}` +
-            (item.lunch_start ? `, lunch ${item.lunch_start}–${MITTAGSPAUSEN[item.lunch_start]}` : ""))
+          .map(item => `${item.tag_mit_datum}: ${ortAnzeige(item.ort)}, ${item.beginn}–${item.ende}` +
+            (item.lunch_start ? `, ${TEXT.lunch.toLowerCase()} ${item.lunch_start}–${MITTAGSPAUSEN[item.lunch_start]}` : ""))
           .join("\n");
 
-        text += `\n\nGesamt: ${dauerText(result.gesamtMinuten)}`;
+        text += `\n\n${TEXT.total}: ${dauerText(result.gesamtMinuten)}`;
       }
 
       if (result.fehler.length > 0) {
@@ -998,7 +1034,7 @@
       }
 
       if (result.buchungen.length === 0 && !PLAN_HAT_AUSWAHL) {
-        tg.showAlert("Bitte mindestens einen Wochentag auswählen.");
+        tg.showAlert(TEXT.select);
         return;
       }
 
@@ -1029,6 +1065,7 @@
         bookings: kompatibel,
         replace_week_start: isoDatum("Montag"),
         week_scope: FORM_SCOPE,
+        language: LANGUAGE,
         gesamt_minuten: result.gesamtMinuten,
         gesamt: dauerText(result.gesamtMinuten)
       }));
