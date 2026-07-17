@@ -721,7 +721,7 @@
       const ende = document.getElementById(`${tagId}_ende`).value;
       const vorher = gewuenscht === null ? select.value : gewuenscht;
       const erlaubt = Object.entries(MITTAGSPAUSEN).filter(([start, lunchEnde]) =>
-        minuten(beginn) < minuten("12:30")
+        minuten(beginn) < minuten("11:00")
         && minuten(start) - minuten(beginn) >= MINDEST_MINUTEN
         && minuten(ende) - minuten(lunchEnde) >= MINDEST_MINUTEN
       );
@@ -730,8 +730,10 @@
       ).join("");
       if (erlaubt.some(([start]) => start === vorher)) {
         select.value = vorher;
-      } else if (standardErlaubt && erlaubt.length) {
-        select.value = erlaubt[erlaubt.length - 1][0];
+      } else if (standardErlaubt) {
+        const standard = erlaubt.find(([start]) => start === "11:30")
+          || erlaubt.find(([start]) => minuten(start) > minuten("11:30"));
+        select.value = standard ? standard[0] : "";
       } else {
         select.value = "";
       }
