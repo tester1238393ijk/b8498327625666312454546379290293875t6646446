@@ -725,7 +725,7 @@
         && minuten(start) - minuten(beginn) >= MINDEST_MINUTEN
         && minuten(ende) - minuten(lunchEnde) >= MINDEST_MINUTEN
       );
-      select.innerHTML = `<option value="">${TEXT.off}</option>` + erlaubt.map(([start, lunchEnde]) =>
+      select.innerHTML = erlaubt.map(([start, lunchEnde]) =>
         `<option value="${start}">${start}–${lunchEnde}</option>`
       ).join("");
       if (erlaubt.some(([start]) => start === vorher)) {
@@ -735,9 +735,14 @@
           || erlaubt.find(([start]) => minuten(start) > minuten("11:30"));
         select.value = standard ? standard[0] : "";
       } else {
+        select.innerHTML = `<option value="">${TEXT.off}</option>`;
         select.value = "";
       }
-      select.disabled = tagIstGesperrt(tag) || erlaubt.length === 0;
+      if (erlaubt.length === 0) {
+        select.innerHTML = `<option value="">${TEXT.off}</option>`;
+        select.value = "";
+      }
+      select.disabled = tagIstGesperrt(tag) || erlaubt.length === 0 || (!standardErlaubt && !vorher);
     }
 
     function planAnwenden() {
