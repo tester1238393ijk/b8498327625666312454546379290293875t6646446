@@ -730,8 +730,8 @@
       ).join("");
       if (erlaubt.some(([start]) => start === vorher)) {
         select.value = vorher;
-      } else if (standardErlaubt && minuten(beginn) < minuten("11:20") && erlaubt.some(([start]) => start === "12:30")) {
-        select.value = "12:30";
+      } else if (standardErlaubt && erlaubt.length) {
+        select.value = erlaubt[erlaubt.length - 1][0];
       } else {
         select.value = "";
       }
@@ -759,7 +759,9 @@
         if ([...beginnSelect.options].some(option => option.value === wantedStart)) beginnSelect.value = wantedStart;
         rebuildEnde(tag, item.end || item.ende || STANDARD_ENDE);
         const lunch = item.lunch_start || "";
-        mittagAktualisieren(tag, lunch, !booking && !Object.prototype.hasOwnProperty.call(item, "lunch_start"));
+        const standardErlaubt = (!booking || booking.status !== "done")
+          && !Object.prototype.hasOwnProperty.call(item, "lunch_start");
+        mittagAktualisieren(tag, lunch, standardErlaubt);
 
         if (booking) {
           document.getElementById(`${tagId}_aktiv`).checked = true;
