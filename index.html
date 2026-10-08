@@ -286,6 +286,12 @@
       background: rgba(255, 107, 107, 0.1);
     }
 
+    .summary.warning {
+      border-color: rgba(255, 199, 107, 0.7);
+      background: rgba(255, 199, 107, 0.1);
+      color: #ffd995;
+    }
+
     .submit-btn {
       width: 100%;
       padding: 15px;
@@ -446,7 +452,7 @@
     document.documentElement.lang = LANGUAGE;
     const TEXT = {
       en: {thisWeek:"This week",nextWeek:"Next week",send:"Send booking",change:"Change",close:"Close",passed:"Passed",venue:"Venue",time:"Time",start:"Start",end:"End",lunch:"Lunch time",off:"Off",closed:"Closed",hours:"Opening hours",total:"Total",select:"Select at least one weekday.",hour:"hr",hoursShort:"hrs",minute:"min"},
-      de: {thisWeek:"Diese Woche",nextWeek:"Nächste Woche",send:"Buchung senden",change:"Ändern",close:"Schließen",passed:"Vorbei",venue:"Ort",time:"Uhrzeit",start:"Beginn",end:"Ende",lunch:"Mittagspause",off:"Aus",closed:"Geschlossen",hours:"Öffnungszeiten",total:"Gesamt",select:"Bitte mindestens einen Wochentag auswählen.",hour:"Std.",hoursShort:"Std.",minute:"Min."}
+      de: {thisWeek:"Diese Woche",nextWeek:"Nächste Woche",send:"Buchung senden",change:"Ändern",close:"Schließen",passed:"Vorbei",venue:"Ort",time:"Uhrzeit",start:"Start",end:"Ende",lunch:"Mittagspause",off:"Aus",closed:"Geschlossen",hours:"Öffnungszeiten",total:"Gesamt",select:"Bitte mindestens einen Wochentag auswählen.",hour:"Std.",hoursShort:"Std.",minute:"Min."}
     }[LANGUAGE];
     const FORM_SCOPE = PLAN.scope === "current" ? "current" : "next";
     const PLAN_HAT_AUSWAHL = Array.isArray(PLAN.bookings) && PLAN.bookings.length > 0;
@@ -899,6 +905,7 @@
     function buchungenSammeln() {
       const buchungen = [];
       const fehler = [];
+      const warnungen = [];
       let gesamtMinuten = 0;
 
       for (const tag of WOCHENTAGE) {
@@ -938,8 +945,8 @@
           (lunchStart ? ` · ${TEXT.lunch.toLowerCase()} ${lunchStart}–${lunchEnde}` : "");
 
         if (gesamtDauer <= 0) {
-          fehler.push(`${tagMitDatum(tag)}: ${LANGUAGE === "de" ? "Ende muss nach Beginn liegen." : "End must be after start."}`);
-          status.textContent = LANGUAGE === "de" ? "Ende muss nach Beginn liegen." : "End must be after start.";
+          fehler.push(`${tagMitDatum(tag)}: ${LANGUAGE === "de" ? "Ende muss nach Start liegen." : "End must be after start."}`);
+          status.textContent = LANGUAGE === "de" ? "Ende muss nach Start liegen." : "End must be after start.";
           status.className = "status-line error";
           continue;
         }
@@ -994,16 +1001,19 @@
       }
 
       if (gesamtMinuten > MAX_MINUTEN_PRO_WOCHE) {
-        fehler.push(LANGUAGE === "de" ? "Woche: maximal 40 Stunden insgesamt." : "Week: maximum 40 hours total.");
+        const ueberMinuten = gesamtMinuten - MAX_MINUTEN_PRO_WOCHE;
+        warnungen.push(LANGUAGE === "de"
+          ? `Warnung: ${dauerText(gesamtMinuten)} geplant (${dauerText(ueberMinuten)} über dem 40-Stunden-Kontingent). Anny kann die Buchung beim Checkout ablehnen.`
+          : `Warning: ${dauerText(gesamtMinuten)} planned (${dauerText(ueberMinuten)} over the 40-hour allowance). Anny may reject the booking at checkout.`);
       }
 
-      return { buchungen, fehler, gesamtMinuten };
+      return { buchungen, fehler, warnungen, gesamtMinuten };
     }
 
     function ansichtAktualisieren() {
       const result = buchungenSammeln();
 
-      if (result.buchungen.length === 0 && result.fehler.length === 0) {
+      if (result.buchungen.length === 0 && result.fehler.length === 0 && result.warnungen.length === 0) {
         summary.className = "summary";
         summary.textContent = "";
         return;
@@ -1020,6 +1030,14 @@
         text += `\n\n${TEXT.total}: ${dauerText(result.gesamtMinuten)}`;
       }
 
+      if (result.warnungen.length > 0) {
+        if (text) {
+          text += "\n\n";
+        }
+
+        text += result.warnungen.join("\n");
+      }
+
       if (result.fehler.length > 0) {
         if (text) {
           text += "\n\n";
@@ -1031,7 +1049,9 @@
       summary.textContent = text;
       summary.className = result.fehler.length > 0
         ? "summary visible error"
-        : "summary visible";
+        : result.warnungen.length > 0
+          ? "summary visible warning"
+          : "summary visible";
     }
 
     function submitBooking() {
