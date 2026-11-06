@@ -435,7 +435,9 @@
     }
 
     function planLesen() {
-      const raw = new URLSearchParams(window.location.search).get("plan");
+      // Fragments stay in the browser; old query links remain usable.
+      const raw = new URLSearchParams(window.location.hash.slice(1)).get("plan")
+        || new URLSearchParams(window.location.search).get("plan");
       if (!raw) return {bookings: [], defaults: []};
       try {
         const padded = raw + "=".repeat((4 - raw.length % 4) % 4);
